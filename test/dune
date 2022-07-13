@@ -1,0 +1,3 @@
+(tests
+ (names match_test)
+ (libraries blossom alcotest))
