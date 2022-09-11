@@ -155,10 +155,14 @@ type 'a t = ('a * 'a) list
 val make :
   ?debug:(Format.formatter -> 'a -> unit) ->
   ?cardinality:cardinality ->
+  ('a -> 'a -> int) ->
   ('a * 'a * float) list ->
   'a t
 (** Computes a maximum-weighted matching on a general undirected weighted graph.
     This function takes time O(n³).
+
+    Requires an ordering function for the vertex type, such as [Int.compare] or
+    [String.compare].
 
     Accepts a list of tuples [(i, j, w)], each describing an undirected edge
     between vertex [i] and vertex [j] with weight [w]. There will be at most one

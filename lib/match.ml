@@ -27,6 +27,23 @@
 v}
 *)
 
+module Assoc = struct
+  (** Use the OCaml association-list functions with a provided [compare]
+      function *)
+
+  let rec find compare x = function
+    | [] -> raise Not_found
+    | (a, b) :: l -> if compare a x = 0 then b else find compare x l
+
+  let rec find_opt compare x = function
+    | [] -> None
+    | (a, b) :: l -> if compare a x = 0 then Some b else find_opt compare x l
+
+  let rec mem compare x = function
+    | [] -> false
+    | (a, _) :: l -> compare a x = 0 || mem compare x l
+end
+
 (** {1 The types} *)
 
 module PList = struct
@@ -117,6 +134,7 @@ type 'v graph = {
   edges : 'v edge list;
   mutable mates : ('v * 'v endpoint) list;
   mutable debug : (Format.formatter -> 'v -> unit) option;
+  compare : 'v -> 'v -> int;
 }
 
 and 'v edge = {
@@ -240,10 +258,7 @@ end
 module Vertex = struct
   type 'v t = 'v vertex
 
-  let equal a b =
-    (* Use [compare a b = 0] instead of [a = b] to work with nan floats. *)
-    compare a.value b.value = 0
-
+  let equal { compare; _ } a b = compare a.value b.value = 0
   let pp pp ppf v = pp ppf v.value
 end
 
@@ -262,9 +277,9 @@ module Node = struct
     | Vertex vertex -> vertex
     | Blossom { fields = { children = { node; _ } :: _; _ }; _ } -> base node
 
-  let equal a b =
+  let equal graph a b =
     match (a, b) with
-    | Vertex a, Vertex b -> Vertex.equal a b
+    | Vertex a, Vertex b -> Vertex.equal graph a b
     | Blossom a, Blossom b -> Blossom.equal a b
     | Vertex _, Blossom _ | Blossom _, Vertex _ -> false
 
@@ -309,14 +324,14 @@ end
 module Mates = struct
   (** Maps vertices to remote endpoints of their attached edges. *)
 
-  let find v { mates; _ } = List.assoc v.value mates
+  let find v { mates; compare; _ } = Assoc.find compare v.value mates
 
   let add_edge edge graph =
     graph.mates <-
       (edge.i.value, J edge) :: (edge.j.value, I edge) :: graph.mates
 
   let add v p graph = graph.mates <- (v.value, p) :: graph.mates
-  let mem v { mates; _ } = List.mem_assoc v.value mates
+  let mem v { mates; compare; _ } = Assoc.mem compare v.value mates
 
   let pp pp ppf { mates; _ } =
     let sep = ref false in
@@ -397,12 +412,12 @@ end
 module OrderedEdge : sig
   type 'v t = private Edge of 'v * 'v
 
-  val make : 'v -> 'v -> 'v t option
+  val make : ('v -> 'v -> int) -> 'v -> 'v -> 'v t option
 end = struct
   type 'v t = Edge of 'v * 'v
 
   (** It's important that edges are always in the same order. *)
-  let make i j =
+  let make compare i j =
     match compare i j with
     | 0 -> None
     | x when x > 0 -> Some (Edge (i, j))
@@ -410,7 +425,7 @@ end = struct
 end
 
 module Graph = struct
-  let rec make_aux ~edges ~ord_edges ~vertices ~max_weight = function
+  let rec make_aux ~edges ~ord_edges ~vertices ~max_weight ~cmp = function
     | [] ->
         (* Once all the edges have processed, loop over the vertices again
            to set the dual_vars and then return the graph. *)
@@ -429,26 +444,28 @@ module Graph = struct
           next_blossom = 0;
           mates = [];
           debug = None;
+          compare = cmp;
         }
     | (i_value, j_value, weight) :: tl -> (
-        match OrderedEdge.make i_value j_value with
-        | None -> make_aux tl ~edges ~ord_edges ~vertices ~max_weight
+        match OrderedEdge.make cmp i_value j_value with
+        | None -> make_aux tl ~edges ~ord_edges ~vertices ~max_weight ~cmp
         | Some k when List.mem k ord_edges ->
             (* Ignore duplicate edges. *)
-            make_aux tl ~edges ~ord_edges ~vertices ~max_weight
+            make_aux tl ~edges ~ord_edges ~vertices ~max_weight ~cmp
         | Some (Edge (i_value, j_value) as k) -> (
             let max_weight = max max_weight weight in
             let ord_edges = k :: ord_edges in
             (* See if i or j are already created.
                If they are, then update them. *)
-            match
-              List.(assoc_opt i_value vertices, assoc_opt j_value vertices)
-            with
+            let i = Assoc.find_opt cmp i_value vertices in
+            let j = Assoc.find_opt cmp j_value vertices in
+            match (i, j) with
             | Some i, Some j ->
                 let k = { i; j; weight; allowable = Not_allowed } in
                 i.fields.neighbors <- J k :: i.fields.neighbors;
                 j.fields.neighbors <- I k :: j.fields.neighbors;
                 make_aux tl ~edges:(k :: edges) ~ord_edges ~vertices ~max_weight
+                  ~cmp
             | Some i, None ->
                 let rec k = { i; j; weight; allowable = Not_allowed }
                 and j =
@@ -463,7 +480,7 @@ module Graph = struct
                 in
                 i.fields.neighbors <- J k :: i.fields.neighbors;
                 make_aux tl ~edges:(k :: edges) ~ord_edges
-                  ~vertices:((j_value, j) :: vertices) ~max_weight
+                  ~vertices:((j_value, j) :: vertices) ~max_weight ~cmp
             | None, Some j ->
                 let rec edge = { i; j; weight; allowable = Not_allowed }
                 and i =
@@ -478,7 +495,7 @@ module Graph = struct
                 in
                 j.fields.neighbors <- I edge :: j.fields.neighbors;
                 make_aux tl ~edges:(edge :: edges) ~ord_edges
-                  ~vertices:((i_value, i) :: vertices) ~max_weight
+                  ~vertices:((i_value, i) :: vertices) ~max_weight ~cmp
             | None, None ->
                 let rec k = { i; j; weight; allowable = Not_allowed }
                 and i =
@@ -502,11 +519,12 @@ module Graph = struct
                 in
                 make_aux tl ~edges:(k :: edges) ~ord_edges
                   ~vertices:((i_value, i) :: (j_value, j) :: vertices)
-                  ~max_weight))
+                  ~max_weight ~cmp))
 
   (** Turn the raw input into a recursive graph.*)
-  let make input_edges =
+  let make cmp input_edges =
     make_aux input_edges ~edges:[] ~ord_edges:[] ~vertices:[] ~max_weight:0.
+      ~cmp
 
   let update_dual_vars_by_delta graph ~delta =
     List.iter
@@ -583,14 +601,15 @@ module AddBlossom = struct
             Found_child (last_v, front_children))
 
   (** Scan the found children to see if there's a connecting "base" node. *)
-  let find_connection last_v next_w front back =
+  let find_connection ~graph last_v next_w front back =
     let rec aux acc = function
       (* If an odd node equals the next w, then return that node and the rest
          of the children. *)
-      | PList.({ node; _ } :: _) as t when Node.equal node next_w -> Some t
+      | PList.({ node; _ } :: _) as t when Node.equal graph node next_w ->
+          Some t
       (* If an even node equals the last v, return the children that came
          before it. *)
-      | a :: { node; _ } :: _ when Node.equal node last_v ->
+      | a :: { node; _ } :: _ when Node.equal graph node last_v ->
           Some (PList.rev (a :: acc))
       | [ _ ] -> None
       | a :: b :: tl -> aux (b :: a :: acc) tl
@@ -610,22 +629,22 @@ module AddBlossom = struct
       | Dead_end (_, _), Dead_end (_, _) -> Augmenting_path
       | (Dead_end (last_v, front) as front_path), Found_child (next_w, back)
         -> (
-          match find_connection last_v next_w front back with
+          match find_connection ~graph last_v next_w front back with
           (* The first front child was a Single S; the back traced around to it. *)
           | Some children -> New_blossom children
           | None -> aux front_path (trace_backward next_w back))
       | Found_child (last_v, front), (Dead_end (next_w, back) as back_path) -> (
-          match find_connection last_v next_w front back with
+          match find_connection ~graph last_v next_w front back with
           (* The first back child was a Single S; the front traced around to it. *)
           | Some children -> New_blossom children
           | None -> aux (trace_forward last_v front) back_path)
       | Found_child (last_v, front), Found_child (next_w, back) -> (
-          match find_connection last_v next_w front back with
+          match find_connection ~graph last_v next_w front back with
           | Some children -> New_blossom children
           | None -> (
               match trace_backward next_w back with
               | Found_child (next_w, back) as back_path -> (
-                  match find_connection last_v next_w front back with
+                  match find_connection ~graph last_v next_w front back with
                   | Some children -> New_blossom children
                   | None -> aux (trace_forward last_v front) back_path)
               | Dead_end _ as back_path ->
@@ -642,14 +661,14 @@ module AddBlossom = struct
   (** If the node has an edge set but with a higher slack, then update the node
       with the new edge. If the node has not been set yet, then add it with the
       new edge. *)
-  let update_best_edges ~b ~neighbor:w ~best_edges ~edge =
+  let update_best_edges ~graph ~b ~neighbor:w ~best_edges ~edge =
     match Node.label w with
     | (S_single | S _) when not (Node.equal_blossom w b) ->
         let[@tail_mod_cons] rec aux ~has_been_set = function
           | [] -> if has_been_set then [] else [ { w; edge } ]
           | best_edge :: tl ->
               if
-                Node.equal w best_edge.w
+                Node.equal graph w best_edge.w
                 && Edge.(slack edge < slack best_edge.edge)
               then { w; edge } :: aux ~has_been_set:true tl
               else best_edge :: aux ~has_been_set tl
@@ -657,7 +676,7 @@ module AddBlossom = struct
         aux ~has_been_set:false best_edges
     | S_single | S _ | Free | T _ -> best_edges
 
-  let compute_best_edges b =
+  let compute_best_edges ~graph b =
     PList.fold_left b.fields.children ~init:[] ~f:(fun best_edges { node; _ } ->
         let best_edges =
           match node with
@@ -672,7 +691,7 @@ module AddBlossom = struct
                         (Endpoint.to_vertex endpoint).fields.in_blossom
                       in
                       let edge = Endpoint.to_edge endpoint in
-                      update_best_edges ~b ~neighbor ~best_edges ~edge)
+                      update_best_edges ~graph ~b ~neighbor ~best_edges ~edge)
                     best_edges neighbors)
           | Blossom { fields = { blossom_best_edges; _ }; _ } ->
               (* Walk this sub-blossom's least-slack edges. *)
@@ -683,7 +702,7 @@ module AddBlossom = struct
                       edge.i.fields.in_blossom
                     else edge.j.fields.in_blossom
                   in
-                  update_best_edges ~b ~neighbor ~best_edges ~edge)
+                  update_best_edges ~graph ~b ~neighbor ~best_edges ~edge)
                 best_edges blossom_best_edges
         in
         (* Forget about least-slack edges of this sub-blossom. *)
@@ -730,7 +749,7 @@ module AddBlossom = struct
     graph.blossoms <- b :: graph.blossoms;
 
     (* Compute the blossom's best edges. *)
-    b.fields.blossom_best_edges <- compute_best_edges b;
+    b.fields.blossom_best_edges <- compute_best_edges ~graph b;
     List.iter
       (fun { edge; _ } ->
         b.best_edge <-
@@ -765,14 +784,14 @@ module ModifyBlossom = struct
 
   (** Remove the base child and split the remaining children into two lists, one
       before and one and after the entry child. *)
-  let split_children PList.(base :: rest) entry_child =
+  let split_children ~graph PList.(base :: rest) entry_child =
     (* assert (Node.equal base.node entry_child *)
     let rec aux front back =
       match back with
       | PList.[] -> No_split { base; rest }
-      | child :: back when Node.equal child.node entry_child ->
+      | child :: back when Node.equal graph child.node entry_child ->
           Go_forward { base; front = PList.rev front; entry = child; back }
-      | child :: child' :: back when Node.equal child'.node entry_child ->
+      | child :: child' :: back when Node.equal graph child'.node entry_child ->
           Go_backward
             { base; front = PList.rev (child :: front); entry = child'; back }
       | child :: child' :: back -> aux (child' :: child :: front) back
@@ -803,7 +822,7 @@ module ModifyBlossom = struct
     (match t with Blossom b -> augment b v graph | Vertex _ -> ());
     (* Figure out how we'll go 'round the blossom. *)
     let move_list, direction, children =
-      match split_children b.fields.children t with
+      match split_children ~graph b.fields.children t with
       | No_split _ -> (PList.[], Backward, b.fields.children)
       | Go_forward { base; front; entry; back } ->
           let move_list = PList.append_same back [ base ] in
@@ -905,7 +924,7 @@ module ModifyBlossom = struct
             (Endpoint.rev_to_vertex label_endpoint).fields.in_blossom
           in
           let base, p, children_to_entry_child, queue =
-            match split_children b.fields.children entry_node with
+            match split_children ~graph b.fields.children entry_node with
             (* If the base is the entry child, don't relabel to the base but do
                process the rest of the children. *)
             | No_split { base; rest } -> (base.node, label_endpoint, rest, queue)
@@ -1114,7 +1133,7 @@ module Substage = struct
       | endpoint :: neighbors -> (
           let neighbor = Endpoint.to_vertex endpoint in
           (* This edge is internal to a blossom; ignore it. *)
-          if Node.equal in_blossom neighbor.fields.in_blossom then
+          if Node.equal graph in_blossom neighbor.fields.in_blossom then
             aux ~queue neighbors
           else
             let edge = Endpoint.to_edge endpoint in
@@ -1295,14 +1314,15 @@ type cardinality = [ `Not_max | `Max ]
 type 'a t = ('a * 'a) list
 
 (** Map endpoints to vertices and remove duplicates. *)
-let finalize { mates; _ } =
+let finalize { mates; compare; _ } =
   List.fold_left
     (fun l (k, v) ->
-      if List.mem_assoc k l then l else (k, (Endpoint.to_vertex v).value) :: l)
+      if Assoc.mem compare k l then l
+      else (k, (Endpoint.to_vertex v).value) :: l)
     [] mates
 
-let make ?debug ?(cardinality = `Not_max) edges =
-  let graph = Graph.make edges in
+let make ?debug ?(cardinality = `Not_max) compare edges =
+  let graph = Graph.make compare edges in
   graph.debug <- debug;
   (* Loop until no further improvement is possible. *)
   let rec aux = function

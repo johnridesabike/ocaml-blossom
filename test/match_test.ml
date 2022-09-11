@@ -14,27 +14,31 @@ let check = Alcotest.(check (list (pair int int)))
 let sort l = List.sort (fun (a, _) (b, _) -> compare a b) l
 
 let trivial () =
-  check "Empty input graph" (Match.make [] |> sort) [];
-  check "Single edge" [ (0, 1); (1, 0) ] (Match.make [ (0, 1, 1.) ] |> sort);
+  check "Empty input graph" (Match.make Int.compare [] |> sort) [];
+  check "Single edge"
+    [ (0, 1); (1, 0) ]
+    (Match.make Int.compare [ (0, 1, 1.) ] |> sort);
   check "Two edges"
     [ (2, 3); (3, 2) ]
-    (Match.make [ (1, 2, 10.); (2, 3, 11.) ] |> sort);
+    (Match.make Int.compare [ (1, 2, 10.); (2, 3, 11.) ] |> sort);
   check "Three edges"
     [ (2, 3); (3, 2) ]
-    (Match.make [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ] |> sort);
+    (Match.make Int.compare [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ] |> sort);
   check "Three edges again, with IDs ordered differently"
     [ (2, 3); (3, 2) ]
-    (Match.make [ (1, 2, 5.); (2, 3, 11.); (4, 3, 5.) ] |> sort);
+    (Match.make Int.compare [ (1, 2, 5.); (2, 3, 11.); (4, 3, 5.) ] |> sort);
   check "A simple love triangle"
     [ (0, 2); (2, 0) ]
-    (Match.make [ (0, 1, 6.); (0, 2, 10.); (1, 2, 5.) ] |> sort);
+    (Match.make Int.compare [ (0, 1, 6.); (0, 2, 10.); (1, 2, 5.) ] |> sort);
   check "Maximum cardinality"
     [ (1, 2); (2, 1); (3, 4); (4, 3) ]
-    (Match.make [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ] ~cardinality:`Max
+    (Match.make Int.compare
+       [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ]
+       ~cardinality:`Max
     |> sort);
   check "Floating point weights"
     [ (1, 4); (2, 3); (3, 2); (4, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, Float.pi);
          (2, 3, Float.exp 1.);
@@ -46,29 +50,30 @@ let trivial () =
 let negative_weights () =
   check "Negative weights"
     [ (1, 2); (2, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [ (1, 2, 2.); (1, 3, -2.); (2, 3, 1.); (2, 4, -1.); (3, 4, -6.) ]
     |> sort);
   check "Negative weights with maximum cardinality"
     [ (1, 3); (2, 4); (3, 1); (4, 2) ]
-    (Match.make ~cardinality:`Max
+    (Match.make Int.compare ~cardinality:`Max
        [ (1, 2, 2.); (1, 3, -2.); (2, 3, 1.); (2, 4, -1.); (3, 4, -6.) ]
     |> sort)
 
 let blossoms () =
   check "S-blossom A"
     [ (1, 2); (2, 1); (3, 4); (4, 3) ]
-    (Match.make [ (1, 2, 8.); (1, 3, 9.); (2, 3, 10.); (3, 4, 7.) ] |> sort);
+    (Match.make Int.compare [ (1, 2, 8.); (1, 3, 9.); (2, 3, 10.); (3, 4, 7.) ]
+    |> sort);
   check "S-blossom B"
     [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 8.); (1, 3, 9.); (2, 3, 10.); (3, 4, 7.); (1, 6, 5.); (4, 5, 6.);
        ]
     |> sort);
   check "Create nested S-blossom, use for augmentation."
     [ (1, 3); (2, 4); (3, 1); (4, 2); (5, 6); (6, 5) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 9.);
          (1, 3, 9.);
@@ -81,7 +86,7 @@ let blossoms () =
     |> sort);
   check "Create S-blossom, relabel as S, include in nested S-blossom."
     [ (1, 2); (2, 1); (3, 4); (4, 3); (5, 6); (6, 5); (7, 8); (8, 7) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 10.);
          (1, 7, 10.);
@@ -96,7 +101,7 @@ let blossoms () =
     |> sort);
   check "Create nested S-blossom, augment, expand recursively."
     [ (1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 8.);
          (1, 3, 8.);
@@ -112,7 +117,7 @@ let blossoms () =
     |> sort);
   check "Create S-blossom, relabel as T, expand."
     [ (1, 6); (2, 3); (3, 2); (4, 8); (5, 7); (6, 1); (7, 5); (8, 4) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 23.);
          (1, 5, 22.);
@@ -126,7 +131,7 @@ let blossoms () =
     |> sort);
   check "Create nested S-blossom, relabel as T, expand."
     [ (1, 8); (2, 3); (3, 2); (4, 7); (5, 6); (6, 5); (7, 4); (8, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 19.);
          (1, 3, 20.);
@@ -152,7 +157,7 @@ let blossoms () =
       (9, 4);
       (10, 8);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 40.);
          (1, 3, 40.);
@@ -180,7 +185,7 @@ let blossoms () =
       (10, 11);
       (11, 10);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 40.);
          (1, 3, 40.);
@@ -209,7 +214,7 @@ let blossoms () =
       (9, 4);
       (10, 8);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 40.);
          (1, 3, 40.);
@@ -229,21 +234,21 @@ let blossoms () =
 let s_blossom_to_t () =
   check "S-blossom, relabel as T-blossom: A"
     [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 4.); (1, 6, 3.);
        ]
     |> sort);
   check "S-blossom, relabel as T-blossom: B"
     [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 3.); (1, 6, 4.);
        ]
     |> sort);
   check "S-blossom, relabel as T-blossom: C"
     [ (1, 2); (2, 1); (3, 6); (4, 5); (5, 4); (6, 3) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 3.); (3, 6, 4.);
        ]
@@ -263,7 +268,7 @@ let nasty_cases () =
       (9, 10);
       (10, 9);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 45.);
          (1, 5, 45.);
@@ -290,7 +295,7 @@ let nasty_cases () =
       (9, 10);
       (10, 9);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 45.);
          (1, 5, 45.);
@@ -319,7 +324,7 @@ let nasty_cases () =
       (9, 10);
       (10, 9);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 45.);
          (1, 5, 45.);
@@ -350,7 +355,7 @@ let nasty_cases () =
       (11, 12);
       (12, 11);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (1, 2, 45.);
          (1, 7, 45.);
@@ -382,7 +387,7 @@ let more_nasty () =
       (8, 9);
       (9, 8);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (9, 8, 30.);
          (9, 5, 55.);
@@ -402,7 +407,7 @@ let more_nasty () =
     |> sort);
   check "Blossom with five children (B)."
     [ (1, 3); (2, 4); (3, 1); (4, 2); (5, 8); (7, 9); (8, 5); (9, 7) ]
-    (Match.make ~debug:Format.pp_print_int
+    (Match.make Int.compare ~debug:Format.pp_print_int
        [
          (1, 2, 77.);
          (1, 3, 60.);
@@ -433,7 +438,7 @@ let more_nasty () =
       (9, 10);
       (10, 9);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (10, 6, 30.);
          (10, 9, 55.);
@@ -469,7 +474,7 @@ let other () =
       (-2, -3);
       (-1, -8);
     ]
-    (Match.make
+    (Match.make Int.compare
        [
          (-1, -2, 45.);
          (-1, -7, 45.);
@@ -488,7 +493,7 @@ let other () =
     |> sort);
   check "(Reversed) Create nested S-blossom, augment, expand recursively."
     [ (1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7) ]
-    (Match.make
+    (Match.make Int.compare
        [
          (8, 7, 8.);
          (8, 6, 8.);
@@ -504,7 +509,7 @@ let other () =
     |> sort);
   check "Vertices with edges on themselves are silently ignored."
     [ (0, 1); (1, 0) ]
-    (Match.make [ (0, 1, 1.); (1, 1, 9001.) ] |> sort);
+    (Match.make Int.compare [ (0, 1, 1.); (1, 1, 9001.) ] |> sort);
   Alcotest.(check (list (pair string string)))
     "String vertices"
     [
@@ -519,7 +524,7 @@ let other () =
       ("Peter", "John");
       ("Raphael", "Michael");
     ]
-    (Match.make
+    (Match.make String.compare
        [
          ("Mary", "Joseph", 40.);
          ("Mary", "Michael", 40.);
@@ -571,7 +576,7 @@ let other () =
       ("Peter", "John");
       ("Philip", "Andrew");
     ]
-    (Match.make
+    (Match.make String.compare
        [
          ("Mary", "Joseph", 40.);
          ("Mary", "Matthew", 40.);
@@ -591,7 +596,7 @@ let brute_force () =
   let open Alcotest in
   for _ = 0 to 1023 do
     List.init 63 (fun _ -> (Random.int 15, Random.int 15, Random.float 100.))
-    |> Match.make ~cardinality:`Max
+    |> Match.make Int.compare ~cardinality:`Max
     |> ignore
   done;
   check pass
