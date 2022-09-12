@@ -44,6 +44,10 @@ module Assoc = struct
     | (a, _) :: l -> compare a x = 0 || mem compare x l
 end
 
+let rec list_mem equal x = function
+  | [] -> false
+  | a :: l -> equal a x || list_mem equal x l
+
 (** {1 The types} *)
 
 module PList = struct
@@ -413,6 +417,7 @@ module OrderedEdge : sig
   type 'v t = private Edge of 'v * 'v
 
   val make : ('v -> 'v -> int) -> 'v -> 'v -> 'v t option
+  val equal : ('v -> 'v -> int) -> 'v t -> 'v t -> bool
 end = struct
   type 'v t = Edge of 'v * 'v
 
@@ -422,6 +427,9 @@ end = struct
     | 0 -> None
     | x when x > 0 -> Some (Edge (i, j))
     | _ -> Some (Edge (j, i))
+
+  let equal compare (Edge (i1, j1)) (Edge (i2, j2)) =
+     compare i1 i2 = 0 && compare j1 j2 = 0
 end
 
 module Graph = struct
@@ -449,7 +457,7 @@ module Graph = struct
     | (i_value, j_value, weight) :: tl -> (
         match OrderedEdge.make cmp i_value j_value with
         | None -> make_aux tl ~edges ~ord_edges ~vertices ~max_weight ~cmp
-        | Some k when List.mem k ord_edges ->
+        | Some k when list_mem (OrderedEdge.equal cmp) k ord_edges ->
             (* Ignore duplicate edges. *)
             make_aux tl ~edges ~ord_edges ~vertices ~max_weight ~cmp
         | Some (Edge (i_value, j_value) as k) -> (
