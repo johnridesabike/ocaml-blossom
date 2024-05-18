@@ -429,7 +429,7 @@ end = struct
     | _ -> Some (Edge (j, i))
 
   let equal compare (Edge (i1, j1)) (Edge (i2, j2)) =
-     compare i1 i2 = 0 && compare j1 j2 = 0
+    compare i1 i2 = 0 && compare j1 j2 = 0
 end
 
 module Graph = struct
