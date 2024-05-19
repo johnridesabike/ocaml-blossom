@@ -96,30 +96,27 @@ module PList = struct
   let append_opp : type p q. ('a, p, q) t -> ('a, q, p) t -> 'a odd =
    fun a b -> match a with [] -> b | x :: a -> x :: append_same a b
 
-  let rec fold_left :
-      type p q. f:('a -> 'b -> 'a) -> init:'a -> ('b, p, q) t -> 'a =
-   fun ~f ~init -> function
-    | [] -> init
-    | a :: tl -> fold_left tl ~init:(f init a) ~f
+  let rec fold_left : type p q. ('a -> 'b -> 'a) -> 'a -> ('b, p, q) t -> 'a =
+   fun f init -> function [] -> init | a :: tl -> fold_left f (f init a) tl
 
-  let rec iter : type p q. f:('a -> unit) -> ('a, p, q) t -> unit =
-   fun ~f -> function
+  let rec iter : type p q. ('a -> unit) -> ('a, p, q) t -> unit =
+   fun f -> function
     | [] -> ()
     | a :: tl ->
         f a;
-        iter tl ~f
+        iter f tl
 
-  let rec iter_even ~f = function
+  let rec iter_even f = function
     | [] -> ()
     | a :: b :: tl ->
         f a b;
-        iter_even tl ~f
+        iter_even f tl
 
   let pp pp ppf l =
     let sep = ref false in
     Format.fprintf ppf "@[<hov 1>[";
     iter
-      ~f:(fun x ->
+      (fun x ->
         if !sep then Format.fprintf ppf ";@ ";
         pp ppf x;
         sep := true)
@@ -300,20 +297,21 @@ module Node = struct
     (** Fold over the leaves of a node. Leaves are the vertices in a blossom's
         children, as well as the vertices in any of its sub-blossom's children.
         *)
-    let rec fold ~init ~f = function
+    let rec fold f init = function
       | Vertex vertex -> f init vertex
       | Blossom { fields = { children; _ }; _ } ->
-          PList.fold_left children ~init ~f:(fun init { node; _ } ->
-              fold node ~init ~f)
+          PList.fold_left
+            (fun init { node; _ } -> fold f init node)
+            init children
 
-    let to_list l = fold ~f:(Fun.flip List.cons) l
+    let add_to_list l = fold (Fun.flip List.cons) l
 
     let pp pp ppf b =
       Format.fprintf ppf "@[<hov 1>[%a ]@]"
         (Format.pp_print_list
            ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
            (Vertex.pp pp))
-        (to_list ~init:[] b)
+        (add_to_list [] b)
   end
 end
 
@@ -375,7 +373,7 @@ module Label = struct
     | Vertex _ ->
         v.best_edge <- None;
         v.label <- label);
-    Node.Leaves.to_list b ~init:queue
+    Node.Leaves.add_to_list queue b
 
   (** Label a vertex T, label its mate S, and add its mate's in_blossom's
       children to the queue. *)
@@ -685,14 +683,15 @@ module AddBlossom = struct
     | S_single | S _ | Free | T _ -> best_edges
 
   let compute_best_edges ~graph b =
-    PList.fold_left b.fields.children ~init:[] ~f:(fun best_edges { node; _ } ->
+    PList.fold_left
+      (fun best_edges { node; _ } ->
         let best_edges =
           match node with
           | Vertex _ | Blossom { fields = { blossom_best_edges = []; _ }; _ } ->
               (* This sub-blossom does not have a list of least-slack edges; get
                  the information from the vertices. *)
-              Node.Leaves.fold node ~init:best_edges
-                ~f:(fun best_edges { fields = { neighbors; _ }; _ } ->
+              Node.Leaves.fold
+                (fun best_edges { fields = { neighbors; _ }; _ } ->
                   List.fold_left
                     (fun best_edges endpoint ->
                       let neighbor =
@@ -701,6 +700,7 @@ module AddBlossom = struct
                       let edge = Endpoint.to_edge endpoint in
                       update_best_edges ~graph ~b ~neighbor ~best_edges ~edge)
                     best_edges neighbors)
+                best_edges node
           | Blossom { fields = { blossom_best_edges; _ }; _ } ->
               (* Walk this sub-blossom's least-slack edges. *)
               List.fold_left
@@ -720,6 +720,7 @@ module AddBlossom = struct
             b.best_edge <- None;
             b.fields.blossom_best_edges <- []);
         best_edges)
+      [] b.fields.children
 
   (** Construct a new blossom with a given base, containing an edge which
       connects a pair of S vertices. Label the new blossom as S; relabel its
@@ -738,14 +739,17 @@ module AddBlossom = struct
         fields = { children; blossom_best_edges = [] };
       }
     in
-    PList.iter children ~f:(fun { node; _ } ->
+    PList.iter
+      (fun { node; _ } ->
         match node with
         | Vertex v -> v.parent <- Some b
-        | Blossom b' -> b'.parent <- Some b);
+        | Blossom b' -> b'.parent <- Some b)
+      children;
     (* Relabel the vertices. *)
     let blossom = Blossom b in
     let queue =
-      Node.Leaves.fold blossom ~init:queue ~f:(fun queue v ->
+      Node.Leaves.fold
+        (fun queue v ->
           let old_label = Node.label v.fields.in_blossom in
           v.fields.in_blossom <- blossom;
           match old_label with
@@ -753,6 +757,7 @@ module AddBlossom = struct
              of an S-blossom; add it to the queue. *)
           | T _ -> v :: queue
           | Free | S_single | S _ -> queue)
+        queue blossom
     in
     graph.blossoms <- b :: graph.blossoms;
 
@@ -846,7 +851,7 @@ module ModifyBlossom = struct
     b.fields.children <- children;
     (* Step into the next two sub-blossoms and augment them recursively. *)
     PList.iter_even
-      ~f:(fun child child' ->
+      (fun child child' ->
         let p =
           match direction with
           | Forward -> child.endpoint
@@ -900,7 +905,8 @@ module ModifyBlossom = struct
           b.fields.children);
     (* Convert sub-blossoms into top-level blossoms. *)
     let queue =
-      PList.fold_left b.fields.children ~init:queue ~f:(fun queue child ->
+      PList.fold_left
+        (fun queue child ->
           match child.node with
           | Vertex v as vertex ->
               v.fields.in_blossom <- vertex;
@@ -915,9 +921,11 @@ module ModifyBlossom = struct
               | _ ->
                   (* This sub-blossom is becoming a top-level blossom, so change
                      its children's [in_blossom] to it. *)
-                  Node.Leaves.fold blossom ~init:() ~f:(fun _ v ->
-                      v.fields.in_blossom <- blossom);
+                  Node.Leaves.fold
+                    (fun _ v -> v.fields.in_blossom <- blossom)
+                    () blossom;
                   queue))
+        queue b.fields.children
     in
     let queue =
       match (b.label, stage) with
@@ -957,8 +965,8 @@ module ModifyBlossom = struct
           Label.assign_t_single ~w:base ~p;
           Label.assign_t_single_vertex ~v:(Endpoint.rev_to_vertex p) ~p;
           (* Continue along the blossom until we get to the entry child. *)
-          PList.fold_left children_to_entry_child ~init:queue
-            ~f:(fun queue child ->
+          PList.fold_left
+            (fun queue child ->
               (* Examine the vertices of the sub-blossom to see whether it is
                  reachable from a neighboring S-vertex outside the expanding
                  blossom. *)
@@ -978,8 +986,9 @@ module ModifyBlossom = struct
                         | S_single | S _ ->
                             failwith "Must be labeled Free or T.")
                   in
-                  Node.Leaves.to_list child.node ~init:[]
+                  Node.Leaves.add_to_list [] child.node
                   |> label_reachable_vertex)
+            queue children_to_entry_child
       (* Labels are erased at the end of a stage; no relabeling is necessary. *)
       | T _, Endstage | (Free | S_single | S _), (Endstage | Not_endstage) ->
           queue
