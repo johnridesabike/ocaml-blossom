@@ -16,6 +16,6 @@
 (package
  (name blossom)
  (synopsis "Maximum weighted matching on undirected graphs")
- (depends ocaml dune (alcotest :with-test))
+ (depends ocaml dune)
  (tags
   ("blossom algorithm" matching "maximum weighted matching")))

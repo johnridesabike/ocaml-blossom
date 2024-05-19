@@ -1,0 +1,262 @@
+# Trivial
+
+Empty input graph
+[]
+
+Single edge
+[(0, 1); (1, 0)]
+
+Two edges
+[(2, 3); (3, 2)]
+
+Three edges
+[(2, 3); (3, 2)]
+
+Three edges again, with IDs ordered differently
+[(2, 3); (3, 2)]
+
+A simple love triangle
+[(0, 2); (2, 0)]
+
+Maximum cardinality
+[(1, 2); (2, 1); (3, 4); (4, 3)]
+
+Floating point weights
+[(1, 4); (2, 3); (3, 2); (4, 1)]
+
+# Negative weights
+
+Negative weights
+[(1, 2); (2, 1)]
+
+Negative weights with maximum cardinality
+[(1, 3); (2, 4); (3, 1); (4, 2)]
+
+# Blossoms
+
+S-blossom A
+[(1, 2); (2, 1); (3, 4); (4, 3)]
+
+S-blossom B
+[(1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1)]
+
+Create nested S-blossom, use for augmentation.
+[(1, 3); (2, 4); (3, 1); (4, 2); (5, 6); (6, 5)]
+
+Create S-blossom, relabel as S, include in nested S-blossom.
+[(1, 2); (2, 1); (3, 4); (4, 3); (5, 6); (6, 5); (7, 8); (8, 7)]
+
+Create nested S-blossom, augment, expand recursively.
+[(1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7)]
+
+Create S-blossom, relabel as T, expand.
+[(1, 6); (2, 3); (3, 2); (4, 8); (5, 7); (6, 1); (7, 5); (8, 4)]
+
+Create nested S-blossom, relabel as T, expand.
+[(1, 8); (2, 3); (3, 2); (4, 7); (5, 6); (6, 5); (7, 4); (8, 1)]
+
+Create nested S-blossom, relabel as S, expand recursively.
+[
+  (1, 2);
+  (2, 1);
+  (3, 5);
+  (4, 9);
+  (5, 3);
+  (6, 7);
+  (7, 6);
+  (8, 10);
+  (9, 4);
+  (10, 8);
+]
+
+Again, but slightly different. (A)
+[
+  (1, 8);
+  (2, 3);
+  (3, 2);
+  (4, 5);
+  (5, 4);
+  (6, 7);
+  (7, 6);
+  (8, 1);
+  (10, 11);
+  (11, 10);
+]
+
+Again, but slightly different. (B)
+[
+  (1, 2);
+  (2, 1);
+  (3, 6);
+  (4, 9);
+  (5, 7);
+  (6, 3);
+  (7, 5);
+  (8, 10);
+  (9, 4);
+  (10, 8);
+]
+
+# S-blossom to T-blossom
+
+S-blossom, relabel as T-blossom: A
+[(1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1)]
+
+S-blossom, relabel as T-blossom: B
+[(1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1)]
+
+S-blossom, relabel as T-blossom: C
+[(1, 2); (2, 1); (3, 6); (4, 5); (5, 4); (6, 3)]
+
+# Nasty cases
+
+Create blossom, relabel as T in more than one way, expand, augment.
+[
+  (1, 6);
+  (2, 3);
+  (3, 2);
+  (4, 8);
+  (5, 7);
+  (6, 1);
+  (7, 5);
+  (8, 4);
+  (9, 10);
+  (10, 9);
+]
+
+Again, but slightly different.
+[
+  (1, 6);
+  (2, 3);
+  (3, 2);
+  (4, 8);
+  (5, 7);
+  (6, 1);
+  (7, 5);
+  (8, 4);
+  (9, 10);
+  (10, 9);
+]
+
+Create blossom, relabel as T, expand such that a new least-slack S-to-free
+edge is produced, augment.
+[
+  (1, 6);
+  (2, 3);
+  (3, 2);
+  (4, 8);
+  (5, 7);
+  (6, 1);
+  (7, 5);
+  (8, 4);
+  (9, 10);
+  (10, 9);
+]
+
+Create nested blossom, relabel as T in more than one way, expand outer
+blossom such that inner blossom ends up on an augmenting path.
+[
+  (1, 8);
+  (2, 3);
+  (3, 2);
+  (4, 6);
+  (5, 9);
+  (6, 4);
+  (7, 10);
+  (8, 1);
+  (9, 5);
+  (10, 7);
+  (11, 12);
+  (12, 11);
+]
+
+# More nasty cases.
+
+Blossom with five children (A).
+[
+  (0, 1);
+  (1, 0);
+  (2, 5);
+  (3, 4);
+  (4, 3);
+  (5, 2);
+  (6, 7);
+  (7, 6);
+  (8, 9);
+  (9, 8);
+]
+
+Blossom with five children (B).
+[(1, 3); (2, 4); (3, 1); (4, 2); (5, 8); (7, 9); (8, 5); (9, 7)]
+
+Scan along a long label path to create a blossom.
+[
+  (1, 2);
+  (2, 1);
+  (3, 6);
+  (4, 5);
+  (5, 4);
+  (6, 3);
+  (7, 8);
+  (8, 7);
+  (9, 10);
+  (10, 9);
+]
+
+# Other tests
+
+(Reversed) Create nested blossom, relabel as T in more than one way, expand
+outer blossom such that inner blossom ends up on an augmenting path.
+[
+  (-12, -11);
+  (-11, -12);
+  (-10, -7);
+  (-9, -5);
+  (-8, -1);
+  (-7, -10);
+  (-6, -4);
+  (-5, -9);
+  (-4, -6);
+  (-3, -2);
+  (-2, -3);
+  (-1, -8);
+]
+
+(Reversed) Create nested S-blossom, augment, expand recursively.
+[(1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7)]
+
+Vertices with edges on themselves are silently ignored.
+[(0, 1); (1, 0)]
+
+String vertices
+[
+  ("Andrew", "Gabriel");
+  ("Gabriel", "Andrew");
+  ("James", "Paul");
+  ("John", "Peter");
+  ("Joseph", "Mary");
+  ("Mary", "Joseph");
+  ("Michael", "Raphael");
+  ("Paul", "James");
+  ("Peter", "John");
+  ("Raphael", "Michael");
+]
+
+String vertices (nested S-blossom, relabel as S)
+[
+  ("Andrew", "Philip");
+  ("James", "Mark");
+  ("John", "Peter");
+  ("Joseph", "Mary");
+  ("Luke", "Matthew");
+  ("Mark", "James");
+  ("Mary", "Joseph");
+  ("Matthew", "Luke");
+  ("Peter", "John");
+  ("Philip", "Andrew");
+]
+
+# Brute force
+
+Generate a large number of random graphs and check that the algorithm doesn't
+crash.

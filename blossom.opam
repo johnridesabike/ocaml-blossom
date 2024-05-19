@@ -10,7 +10,6 @@ bug-reports: "https://github.com/johnridesabike/ocaml-blossom/issues"
 depends: [
   "ocaml"
   "dune" {>= "3.3"}
-  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [

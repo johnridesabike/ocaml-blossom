@@ -8,34 +8,45 @@
 (*                                                                        *)
 (**************************************************************************)
 
-let check = Alcotest.(check (list (pair int int)))
+module F = Format
+
 let sort l = List.sort (fun (a, _) (b, _) -> compare a b) l
 
-let trivial () =
-  check "Empty input graph" (Blossom.make Int.compare [] |> sort) [];
-  check "Single edge"
-    [ (0, 1); (1, 0) ]
-    (Blossom.make Int.compare [ (0, 1, 1.) ] |> sort);
-  check "Two edges"
-    [ (2, 3); (3, 2) ]
+let pp_list pp ppf l =
+  F.fprintf ppf "@[<hv 0>[@;<0 2>@[<hv 0>%a@]%t]@]"
+    (F.pp_print_list ~pp_sep:(fun ppf () -> F.fprintf ppf ";@ ") pp)
+    l
+    (F.pp_print_custom_break ~fits:("", 0, "") ~breaks:(";", 0, ""))
+
+let pp_pair pp_a pp_b ppf (a, b) =
+  F.fprintf ppf "@[<hv>(@;<0 2>@[<hv 0>%a,@ %a@])@]" pp_a a pp_b b
+
+let check pp title l =
+  F.printf "@[%a@]@;%a@;@;" F.pp_print_text title (pp_list (pp_pair pp pp)) l
+
+let check_int = check F.pp_print_int
+let check_string = check (fun ppf s -> F.fprintf ppf "%S" s)
+let section s = F.printf "# %s@;@;" s
+
+let () =
+  F.printf "@[<v>";
+  section "Trivial";
+  check_int "Empty input graph" (Blossom.make Int.compare [] |> sort);
+  check_int "Single edge" (Blossom.make Int.compare [ (0, 1, 1.) ] |> sort);
+  check_int "Two edges"
     (Blossom.make Int.compare [ (1, 2, 10.); (2, 3, 11.) ] |> sort);
-  check "Three edges"
-    [ (2, 3); (3, 2) ]
+  check_int "Three edges"
     (Blossom.make Int.compare [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ] |> sort);
-  check "Three edges again, with IDs ordered differently"
-    [ (2, 3); (3, 2) ]
+  check_int "Three edges again, with IDs ordered differently"
     (Blossom.make Int.compare [ (1, 2, 5.); (2, 3, 11.); (4, 3, 5.) ] |> sort);
-  check "A simple love triangle"
-    [ (0, 2); (2, 0) ]
+  check_int "A simple love triangle"
     (Blossom.make Int.compare [ (0, 1, 6.); (0, 2, 10.); (1, 2, 5.) ] |> sort);
-  check "Maximum cardinality"
-    [ (1, 2); (2, 1); (3, 4); (4, 3) ]
+  check_int "Maximum cardinality"
     (Blossom.make Int.compare
        [ (1, 2, 5.); (2, 3, 11.); (3, 4, 5.) ]
        ~cardinality:`Max
     |> sort);
-  check "Floating point weights"
-    [ (1, 4); (2, 3); (3, 2); (4, 1) ]
+  check_int "Floating point weights"
     (Blossom.make Int.compare
        [
          (1, 2, Float.pi);
@@ -43,35 +54,30 @@ let trivial () =
          (1, 3, 3.0);
          (1, 4, Float.sqrt 2.0);
        ]
-    |> sort)
+    |> sort);
 
-let negative_weights () =
-  check "Negative weights"
-    [ (1, 2); (2, 1) ]
+  section "Negative weights";
+  check_int "Negative weights"
     (Blossom.make Int.compare
        [ (1, 2, 2.); (1, 3, -2.); (2, 3, 1.); (2, 4, -1.); (3, 4, -6.) ]
     |> sort);
-  check "Negative weights with maximum cardinality"
-    [ (1, 3); (2, 4); (3, 1); (4, 2) ]
+  check_int "Negative weights with maximum cardinality"
     (Blossom.make Int.compare ~cardinality:`Max
        [ (1, 2, 2.); (1, 3, -2.); (2, 3, 1.); (2, 4, -1.); (3, 4, -6.) ]
-    |> sort)
+    |> sort);
 
-let blossoms () =
-  check "S-blossom A"
-    [ (1, 2); (2, 1); (3, 4); (4, 3) ]
+  section "Blossoms";
+  check_int "S-blossom A"
     (Blossom.make Int.compare
        [ (1, 2, 8.); (1, 3, 9.); (2, 3, 10.); (3, 4, 7.) ]
     |> sort);
-  check "S-blossom B"
-    [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
+  check_int "S-blossom B"
     (Blossom.make Int.compare
        [
          (1, 2, 8.); (1, 3, 9.); (2, 3, 10.); (3, 4, 7.); (1, 6, 5.); (4, 5, 6.);
        ]
     |> sort);
-  check "Create nested S-blossom, use for augmentation."
-    [ (1, 3); (2, 4); (3, 1); (4, 2); (5, 6); (6, 5) ]
+  check_int "Create nested S-blossom, use for augmentation."
     (Blossom.make Int.compare
        [
          (1, 2, 9.);
@@ -83,8 +89,7 @@ let blossoms () =
          (5, 6, 6.);
        ]
     |> sort);
-  check "Create S-blossom, relabel as S, include in nested S-blossom."
-    [ (1, 2); (2, 1); (3, 4); (4, 3); (5, 6); (6, 5); (7, 8); (8, 7) ]
+  check_int "Create S-blossom, relabel as S, include in nested S-blossom."
     (Blossom.make Int.compare
        [
          (1, 2, 10.);
@@ -98,8 +103,7 @@ let blossoms () =
          (7, 8, 8.);
        ]
     |> sort);
-  check "Create nested S-blossom, augment, expand recursively."
-    [ (1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7) ]
+  check_int "Create nested S-blossom, augment, expand recursively."
     (Blossom.make Int.compare
        [
          (1, 2, 8.);
@@ -114,8 +118,7 @@ let blossoms () =
          (7, 8, 12.);
        ]
     |> sort);
-  check "Create S-blossom, relabel as T, expand."
-    [ (1, 6); (2, 3); (3, 2); (4, 8); (5, 7); (6, 1); (7, 5); (8, 4) ]
+  check_int "Create S-blossom, relabel as T, expand."
     (Blossom.make Int.compare
        [
          (1, 2, 23.);
@@ -128,8 +131,7 @@ let blossoms () =
          (5, 7, 13.);
        ]
     |> sort);
-  check "Create nested S-blossom, relabel as T, expand."
-    [ (1, 8); (2, 3); (3, 2); (4, 7); (5, 6); (6, 5); (7, 4); (8, 1) ]
+  check_int "Create nested S-blossom, relabel as T, expand."
     (Blossom.make Int.compare
        [
          (1, 2, 19.);
@@ -143,19 +145,7 @@ let blossoms () =
          (5, 6, 7.);
        ]
     |> sort);
-  check "Create nested S-blossom, relabel as S, expand recursively."
-    [
-      (1, 2);
-      (2, 1);
-      (3, 5);
-      (4, 9);
-      (5, 3);
-      (6, 7);
-      (7, 6);
-      (8, 10);
-      (9, 4);
-      (10, 8);
-    ]
+  check_int "Create nested S-blossom, relabel as S, expand recursively."
     (Blossom.make Int.compare
        [
          (1, 2, 40.);
@@ -171,19 +161,7 @@ let blossoms () =
          (4, 9, 30.);
        ]
     |> sort);
-  check "Again, but slightly different. (A)"
-    [
-      (1, 8);
-      (2, 3);
-      (3, 2);
-      (4, 5);
-      (5, 4);
-      (6, 7);
-      (7, 6);
-      (8, 1);
-      (10, 11);
-      (11, 10);
-    ]
+  check_int "Again, but slightly different. (A)"
     (Blossom.make Int.compare
        [
          (1, 2, 40.);
@@ -200,19 +178,7 @@ let blossoms () =
          (11, 10, 100.);
        ]
     |> sort);
-  check "Again, but slightly different. (B)"
-    [
-      (1, 2);
-      (2, 1);
-      (3, 6);
-      (4, 9);
-      (5, 7);
-      (6, 3);
-      (7, 5);
-      (8, 10);
-      (9, 4);
-      (10, 8);
-    ]
+  check_int "Again, but slightly different. (B)"
     (Blossom.make Int.compare
        [
          (1, 2, 40.);
@@ -228,45 +194,31 @@ let blossoms () =
          (4, 9, 30.);
          (3, 6, 36.);
        ]
-    |> sort)
+    |> sort);
 
-let s_blossom_to_t () =
-  check "S-blossom, relabel as T-blossom: A"
-    [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
+  section "S-blossom to T-blossom";
+  check_int "S-blossom, relabel as T-blossom: A"
     (Blossom.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 4.); (1, 6, 3.);
        ]
     |> sort);
-  check "S-blossom, relabel as T-blossom: B"
-    [ (1, 6); (2, 3); (3, 2); (4, 5); (5, 4); (6, 1) ]
+  check_int "S-blossom, relabel as T-blossom: B"
     (Blossom.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 3.); (1, 6, 4.);
        ]
     |> sort);
-  check "S-blossom, relabel as T-blossom: C"
-    [ (1, 2); (2, 1); (3, 6); (4, 5); (5, 4); (6, 3) ]
+  check_int "S-blossom, relabel as T-blossom: C"
     (Blossom.make Int.compare
        [
          (1, 2, 9.); (1, 3, 8.); (2, 3, 10.); (1, 4, 5.); (4, 5, 3.); (3, 6, 4.);
        ]
-    |> sort)
+    |> sort);
 
-let nasty_cases () =
-  check "Create blossom, relabel as T in more than one way, expand, augment."
-    [
-      (1, 6);
-      (2, 3);
-      (3, 2);
-      (4, 8);
-      (5, 7);
-      (6, 1);
-      (7, 5);
-      (8, 4);
-      (9, 10);
-      (10, 9);
-    ]
+  section "Nasty cases";
+  check_int
+    "Create blossom, relabel as T in more than one way, expand, augment."
     (Blossom.make Int.compare
        [
          (1, 2, 45.);
@@ -281,19 +233,7 @@ let nasty_cases () =
          (9, 10, 5.);
        ]
     |> sort);
-  check "Again, but slightly different."
-    [
-      (1, 6);
-      (2, 3);
-      (3, 2);
-      (4, 8);
-      (5, 7);
-      (6, 1);
-      (7, 5);
-      (8, 4);
-      (9, 10);
-      (10, 9);
-    ]
+  check_int "Again, but slightly different."
     (Blossom.make Int.compare
        [
          (1, 2, 45.);
@@ -308,21 +248,9 @@ let nasty_cases () =
          (9, 10, 5.);
        ]
     |> sort);
-  check
+  check_int
     "Create blossom, relabel as T, expand such that a new least-slack \
      S-to-free edge is produced, augment."
-    [
-      (1, 6);
-      (2, 3);
-      (3, 2);
-      (4, 8);
-      (5, 7);
-      (6, 1);
-      (7, 5);
-      (8, 4);
-      (9, 10);
-      (10, 9);
-    ]
     (Blossom.make Int.compare
        [
          (1, 2, 45.);
@@ -337,23 +265,9 @@ let nasty_cases () =
          (9, 10, 5.);
        ]
     |> sort);
-  check
+  check_int
     "Create nested blossom, relabel as T in more than one way, expand outer \
      blossom such that inner blossom ends up on an augmenting path."
-    [
-      (1, 8);
-      (2, 3);
-      (3, 2);
-      (4, 6);
-      (5, 9);
-      (6, 4);
-      (7, 10);
-      (8, 1);
-      (9, 5);
-      (10, 7);
-      (11, 12);
-      (12, 11);
-    ]
     (Blossom.make Int.compare
        [
          (1, 2, 45.);
@@ -370,22 +284,10 @@ let nasty_cases () =
          (7, 10, 26.);
          (11, 12, 5.);
        ]
-    |> sort)
+    |> sort);
 
-let more_nasty () =
-  check "Blossom with five children (A)."
-    [
-      (0, 1);
-      (1, 0);
-      (2, 5);
-      (3, 4);
-      (4, 3);
-      (5, 2);
-      (6, 7);
-      (7, 6);
-      (8, 9);
-      (9, 8);
-    ]
+  section "More nasty cases.";
+  check_int "Blossom with five children (A)."
     (Blossom.make Int.compare
        [
          (9, 8, 30.);
@@ -404,9 +306,9 @@ let more_nasty () =
          (1, 0, 43.);
        ]
     |> sort);
-  check "Blossom with five children (B)."
-    [ (1, 3); (2, 4); (3, 1); (4, 2); (5, 8); (7, 9); (8, 5); (9, 7) ]
-    (Blossom.make Int.compare ~debug:Format.pp_print_int
+  (* NOTE: DEBUG THIS? *)
+  check_int "Blossom with five children (B)."
+    (Blossom.make Int.compare
        [
          (1, 2, 77.);
          (1, 3, 60.);
@@ -424,19 +326,8 @@ let more_nasty () =
          (4, 10, 30.);
        ]
     |> sort);
-  check "Scan along a long label path to create a blossom."
-    [
-      (1, 2);
-      (2, 1);
-      (3, 6);
-      (4, 5);
-      (5, 4);
-      (6, 3);
-      (7, 8);
-      (8, 7);
-      (9, 10);
-      (10, 9);
-    ]
+  (* NOTE: DEBUG THIS? *)
+  check_int "Scan along a long label path to create a blossom."
     (Blossom.make Int.compare
        [
          (10, 6, 30.);
@@ -452,27 +343,13 @@ let more_nasty () =
          (2, 8, 55.);
          (8, 7, 30.);
        ]
-    |> sort)
+    |> sort);
 
-let other () =
-  check
+  section "Other tests";
+  check_int
     "(Reversed) Create nested blossom, relabel as T in more than one way, \
      expand outer blossom such that inner blossom ends up on an augmenting \
      path."
-    [
-      (-12, -11);
-      (-11, -12);
-      (-10, -7);
-      (-9, -5);
-      (-8, -1);
-      (-7, -10);
-      (-6, -4);
-      (-5, -9);
-      (-4, -6);
-      (-3, -2);
-      (-2, -3);
-      (-1, -8);
-    ]
     (Blossom.make Int.compare
        [
          (-1, -2, 45.);
@@ -490,8 +367,7 @@ let other () =
          (-11, -12, 5.);
        ]
     |> sort);
-  check "(Reversed) Create nested S-blossom, augment, expand recursively."
-    [ (1, 2); (2, 1); (3, 5); (4, 6); (5, 3); (6, 4); (7, 8); (8, 7) ]
+  check_int "(Reversed) Create nested S-blossom, augment, expand recursively."
     (Blossom.make Int.compare
        [
          (8, 7, 8.);
@@ -506,23 +382,9 @@ let other () =
          (2, 1, 12.);
        ]
     |> sort);
-  check "Vertices with edges on themselves are silently ignored."
-    [ (0, 1); (1, 0) ]
+  check_int "Vertices with edges on themselves are silently ignored."
     (Blossom.make Int.compare [ (0, 1, 1.); (1, 1, 9001.) ] |> sort);
-  Alcotest.(check (list (pair string string)))
-    "String vertices"
-    [
-      ("Andrew", "Gabriel");
-      ("Gabriel", "Andrew");
-      ("James", "Paul");
-      ("John", "Peter");
-      ("Joseph", "Mary");
-      ("Mary", "Joseph");
-      ("Michael", "Raphael");
-      ("Paul", "James");
-      ("Peter", "John");
-      ("Raphael", "Michael");
-    ]
+  check_string "String vertices"
     (Blossom.make String.compare
        [
          ("Mary", "Joseph", 40.);
@@ -561,20 +423,7 @@ let other () =
   (*        \                                              *)
   (*         Joseph                 Mark ---------- James  *)
   (*********************************************************)
-  Alcotest.(check (list (pair string string)))
-    "String vertices (nested S-blossom, relabel as S)"
-    [
-      ("Andrew", "Philip");
-      ("James", "Mark");
-      ("John", "Peter");
-      ("Joseph", "Mary");
-      ("Luke", "Matthew");
-      ("Mark", "James");
-      ("Mary", "Joseph");
-      ("Matthew", "Luke");
-      ("Peter", "John");
-      ("Philip", "Andrew");
-    ]
+  check_string "String vertices (nested S-blossom, relabel as S)"
     (Blossom.make String.compare
        [
          ("Mary", "Joseph", 40.);
@@ -589,42 +438,15 @@ let other () =
          ("Andrew", "Philip", 10.);
          ("Mark", "James", 30.);
        ]
-    |> sort)
+    |> sort);
 
-let brute_force () =
-  let open Alcotest in
+  section "Brute force";
   for _ = 0 to 1023 do
     List.init 63 (fun _ -> (Random.int 15, Random.int 15, Random.float 100.))
     |> Blossom.make Int.compare ~cardinality:`Max
     |> ignore
   done;
-  check pass
+  F.printf "@[%a@]@;" F.pp_print_text
     "Generate a large number of random graphs and check that the algorithm \
-     doesn't crash."
-    () ()
-
-let () =
-  let open Alcotest in
-  run "Match"
-    [
-      ( "Trivial cases",
-        [
-          test_case "Trivial cases" `Quick trivial;
-          test_case "Negative weights" `Quick negative_weights;
-        ] );
-      ( "Blossoms",
-        [
-          test_case "create S-blossom and use it for augmentation." `Quick
-            blossoms;
-          test_case
-            "Create S-blossom, relabel as T-blossom, use for augmentation."
-            `Quick s_blossom_to_t;
-        ] );
-      ("Other cases", [ test_case "Other cases" `Quick other ]);
-      ( "Nasty cases",
-        [
-          test_case "Nasty cases" `Quick nasty_cases;
-          test_case "More nasty cases" `Quick more_nasty;
-          test_case "Brute force any missed edge cases" `Slow brute_force;
-        ] );
-    ]
+     doesn't crash.";
+  F.printf "@]"
