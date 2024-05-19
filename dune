@@ -1,2 +1,8 @@
 (library
- (public_name blossom))
+ (public_name blossom)
+ (modules blossom))
+
+(test
+ (name test)
+ (modules test)
+ (libraries blossom))
