@@ -114,14 +114,13 @@ module PList = struct
 
   let pp pp ppf l =
     let sep = ref false in
-    Format.fprintf ppf "@[<hov 1>[";
+    Format.fprintf ppf "(@[<hv>";
     iter
       (fun x ->
-        if !sep then Format.fprintf ppf ";@ ";
-        pp ppf x;
-        sep := true)
+        if !sep then Format.pp_print_space ppf () else sep := true;
+        pp ppf x)
       l;
-    Format.fprintf ppf " ]@]"
+    Format.fprintf ppf "@])"
 end
 
 type stage = Not_endstage | Endstage
@@ -134,7 +133,7 @@ type 'v graph = {
   max_weight : float;
   edges : 'v edge list;
   mutable mates : ('v * 'v endpoint) list;
-  mutable debug : (Format.formatter -> 'v -> unit) option;
+  debug : (Format.formatter * (Format.formatter -> 'v -> unit)) option;
   compare : 'v -> 'v -> int;
 }
 
@@ -230,6 +229,14 @@ and 'v label =
 
 (** {1 Accessor and utility functions} *)
 
+let debug graph f =
+  match graph.debug with None -> () | Some (ppf, pp) -> f ppf pp
+
+let pp_sep = Format.pp_print_space
+
+let pp_pair pp_a pp_b ppf (a, b) =
+  Format.fprintf ppf "(@[<hv>%a@ %a@])" pp_a a pp_b b
+
 module Edge = struct
   type 'v t = 'v edge
 
@@ -237,10 +244,9 @@ module Edge = struct
   let slack { i; j; weight; _ } = i.dual_var +. j.dual_var -. weight
 
   let pp pp ppf k =
-    let i = k.i.value in
-    let j = k.j.value in
-    let w = k.weight in
-    Format.fprintf ppf "@[<hov 1>{i = %a;@ j = %a;@ weight = %g}@]" pp i pp j w
+    Format.fprintf ppf
+      "(@[<hv>(@[<hv>i %a@])@ (@[<hv>j %a@])@ (@[<hv>weight %g@])@])" pp
+      k.i.value pp k.j.value k.weight
 end
 
 module Endpoint = struct
@@ -252,22 +258,22 @@ module Endpoint = struct
   let rev_to_vertex = function I edge -> edge.j | J edge -> edge.i
 
   let pp pp ppf = function
-    | I edge -> Format.fprintf ppf "(I %a)" (Edge.pp pp) edge
-    | J edge -> Format.fprintf ppf "(J %a)" (Edge.pp pp) edge
+    | I edge -> Format.fprintf ppf "(@[<hv>I@ %a@])" (Edge.pp pp) edge
+    | J edge -> Format.fprintf ppf "(@[<hv>J@ %a@])" (Edge.pp pp) edge
 end
 
 module Vertex = struct
   type 'v t = 'v vertex
 
   let equal { compare; _ } a b = compare a.value b.value = 0
-  let pp pp ppf v = pp ppf v.value
+  let pp pp ppf v = Format.fprintf ppf "(@[<hv>vertex@ %a@])" pp v.value
 end
 
 module Blossom = struct
   type 'v t = 'v blossom
 
   let equal a b = Int.equal a.value b.value
-  let pp ppf b = Format.pp_print_int ppf b.value
+  let pp ppf b = Format.fprintf ppf "(@[<hv>blossom@ %i@])" b.value
 end
 
 module Node = struct
@@ -290,8 +296,8 @@ module Node = struct
   let label (Vertex { label; _ } | Blossom { label; _ }) = label
 
   let pp pp ppf = function
-    | Vertex { value; _ } -> Format.fprintf ppf "Vertex %a" pp value
-    | Blossom { value; _ } -> Format.fprintf ppf "Blossom %i" value
+    | Vertex { value; _ } -> Format.fprintf ppf "(@[<hv>Vertex@ %a@])" pp value
+    | Blossom { value; _ } -> Format.fprintf ppf "(@[<hv>Blossom@ %i@])" value
 
   module Leaves = struct
     (** Fold over the leaves of a node. Leaves are the vertices in a blossom's
@@ -307,10 +313,8 @@ module Node = struct
     let add_to_list l = fold (Fun.flip List.cons) l
 
     let pp pp ppf b =
-      Format.fprintf ppf "@[<hov 1>[%a ]@]"
-        (Format.pp_print_list
-           ~pp_sep:(fun ppf () -> Format.fprintf ppf ";@ ")
-           (Vertex.pp pp))
+      Format.fprintf ppf "(@[<hv>%a@])"
+        (Format.pp_print_list ~pp_sep (Vertex.pp pp))
         (add_to_list [] b)
   end
 end
@@ -319,8 +323,8 @@ module Child = struct
   type 'v t = 'v child
 
   let pp pp ppf { node; endpoint } =
-    Format.fprintf ppf "@[<hov 1>{node = %a;@ endpoint = %a}@]" (Node.pp pp)
-      node (Endpoint.pp pp) endpoint
+    Format.fprintf ppf "(@[<hv>(@[<hv>node@ %a@])@ (@[<hv>endpoint@ %a@])@])"
+      (Node.pp pp) node (Endpoint.pp pp) endpoint
 end
 
 module Mates = struct
@@ -336,34 +340,29 @@ module Mates = struct
   let mem v { mates; compare; _ } = Assoc.mem compare v.value mates
 
   let pp pp ppf { mates; _ } =
-    let sep = ref false in
-    Format.fprintf ppf "@[<hov 1>(";
-    List.iter
-      (fun (k, v) ->
-        if !sep then Format.fprintf ppf ";@ ";
-        Format.fprintf ppf "%a -> %a" pp k (Endpoint.pp pp) v;
-        sep := true)
-      mates;
-    Format.fprintf ppf " )@]"
+    Format.fprintf ppf "(@[<hv>mates@ (@[<hv>%a@])@])"
+      (Format.pp_print_list ~pp_sep (pp_pair pp (Endpoint.pp pp)))
+      mates
 end
 
 module Label = struct
   let pp pp ppf = function
     | Free -> Format.pp_print_string ppf "Free"
     | S_single -> Format.pp_print_string ppf "S_single"
-    | S endpoint -> Format.fprintf ppf "(S %a)" (Endpoint.pp pp) endpoint
-    | T endpoint -> Format.fprintf ppf "(T %a)" (Endpoint.pp pp) endpoint
+    | S endpoint ->
+        Format.fprintf ppf "(@[<hv>S@ %a@])" (Endpoint.pp pp) endpoint
+    | T endpoint ->
+        Format.fprintf ppf "(@[<hv>T@ %a@])" (Endpoint.pp pp) endpoint
 
   (** Label a vertex S and add its in_blossom's children to the queue. *)
   let assign_s ~v ~label ~queue ~graph =
     let b = v.fields.in_blossom in
-    (match graph.debug with
-    | None -> ()
-    | Some pp' ->
-        Format.printf
-          "assign label: @[<v>Vertex = %a@ Blossom = %a@ Label = %a@]@."
-          (Vertex.pp pp') v (Node.pp pp') b (pp pp') label;
-        Format.printf "PUSH %a@." (Node.Leaves.pp pp') b);
+    debug graph (fun ppf pp_v ->
+        Format.fprintf ppf
+          "@ (@[<hv>ASSIGN_LABEL@ %a@ (@[<hv>in_blossom@ %a@])@ %a@])@ \
+           (@[<hv>PUSH@ %a@])"
+          (Vertex.pp pp_v) v (Node.pp pp_v) b (pp pp_v) label
+          (Node.Leaves.pp pp_v) b);
     (match b with
     | Blossom b ->
         b.label <- label;
@@ -380,11 +379,9 @@ module Label = struct
   let assign_t ~v ~p ~graph ~queue =
     let b = v.fields.in_blossom in
     let label = T p in
-    (match graph.debug with
-    | None -> ()
-    | Some pp' ->
-        Format.printf
-          "assign label: @[<v>Vertex = %a@ Blossom = %a@ Label = %a@]@."
+    debug graph (fun ppf pp' ->
+        Format.fprintf ppf
+          "@ (@[<hv>ASSIGN_LABEL@ %a@ (@[<hv>in_blossom %a@])@ %a@])"
           (Vertex.pp pp') v (Node.pp pp') b (pp pp') label);
     (match b with
     | Blossom b ->
@@ -625,10 +622,9 @@ module AddBlossom = struct
   (** Trace back from the given edge's vertices to discover either a new blossom
       or an augmenting path. *)
   let scan_for_blossom ({ i; j; _ } as edge) ~graph =
-    (match graph.debug with
-    | None -> ()
-    | Some pp' ->
-        Format.printf "scan for blossom: @[<v>v = %a@ w = %a@]@."
+    debug graph (fun ppf pp' ->
+        Format.fprintf ppf
+          "@ (@[<hv>SCAN_FOR_BLOSSOM@ (@[<hv>v@ %a@])@ (@[<hv>w@ %a@])@])"
           (Vertex.pp pp') i (Vertex.pp pp') j);
     let rec aux front_path back_path =
       match (front_path, back_path) with
@@ -822,12 +818,9 @@ module ModifyBlossom = struct
       between vertex v and the base vertex. Keep blossom bookkeeping
       consistent. *)
   let rec augment b v graph =
-    (match graph.debug with
-    | None -> ()
-    | Some pp ->
-        Format.printf
-          "augment blossom: @[<v>Blossom = %a@ Vertex = %a@ Mates = %a@]@."
-          Blossom.pp b (Vertex.pp pp) v (Mates.pp pp) graph);
+    debug graph (fun ppf pp ->
+        Format.fprintf ppf "@ (@[<hv>AUGMENT_BLOSSOM@ %a@ %a@ %a@])" Blossom.pp
+          b (Vertex.pp pp) v (Mates.pp pp) graph);
     (* Bubble up through the blossom tree from from the vertex to an immediate
        sub-blossom of b. *)
     let t = bubble_blossom_tree (Vertex v) b v.parent in
@@ -865,11 +858,11 @@ module ModifyBlossom = struct
         | Vertex _ -> ());
         (* Match the edge connecting those sub-blossoms. *)
         Mates.add_edge (Endpoint.to_edge p) graph;
-        match graph.debug with
-        | None -> ()
-        | Some pp ->
-            Format.printf "PAIR @[<v>v = %a@ w = %a@]@." (Vertex.pp pp)
-              (Endpoint.to_vertex p) (Vertex.pp pp) (Endpoint.rev_to_vertex p))
+        debug graph (fun ppf pp ->
+            Format.fprintf ppf
+              "@ (@[<hv>PAIR@ (@[<hv>v@ %a@])@ (@[<hv>w@ %a@])@])"
+              (Vertex.pp pp) (Endpoint.to_vertex p) (Vertex.pp pp)
+              (Endpoint.rev_to_vertex p)))
       move_list
 
   let rec relabel_to_base next_endpoint queue graph direction = function
@@ -891,15 +884,13 @@ module ModifyBlossom = struct
 
   let pp_endstage ppf = function
     | Endstage -> Format.pp_print_string ppf "Endstage"
-    | Not_endstage -> Format.pp_print_string ppf "Not endstage"
+    | Not_endstage -> Format.pp_print_string ppf "Not_endstage"
 
   (** Expand the given top-level blossom. *)
   let rec expand ~graph ~b ~stage ~queue =
-    (match graph.debug with
-    | None -> ()
-    | Some pp' ->
-        Format.printf
-          "expand blossom: @[<v>Blossom = %a@ Endstage = %a@ Children = %a@]@."
+    debug graph (fun ppf pp' ->
+        Format.fprintf ppf
+          "@ (@[<hv>EXPAND_BLOSSOM@ %a@ %a@ (@[<hv>children@ %a@])@])"
           Blossom.pp b pp_endstage stage
           (PList.pp (Child.pp pp'))
           b.fields.children);
@@ -1008,11 +999,14 @@ module Delta = struct
     | Three of float * 'v Edge.t
     | Four of float * 'v Blossom.t
 
-  let pp ppf = function
-    | One delta -> Format.fprintf ppf "One %g" delta
-    | Two (delta, _) -> Format.fprintf ppf "Two %g" delta
-    | Three (delta, _) -> Format.fprintf ppf "Three %g" delta
-    | Four (delta, _) -> Format.fprintf ppf "Four %g" delta
+  let pp pp ppf = function
+    | One delta -> Format.fprintf ppf "(@[<hv>One@ %g@])" delta
+    | Two (delta, k) ->
+        Format.fprintf ppf "(@[<hv>Two@ %g@ %a@])" delta (Edge.pp pp) k
+    | Three (delta, k) ->
+        Format.fprintf ppf "(@[<hv>Three@ %g@ %a@])" delta (Edge.pp pp) k
+    | Four (delta, b) ->
+        Format.fprintf ppf "(@[<hv>Four@ %g@ %a@])" delta Blossom.pp b
 
   let get_min_dual_var { vertices; max_weight; _ } =
     List.fold_left
@@ -1133,12 +1127,11 @@ module Substage = struct
       vertices. The augmenting path runs through the edge which connects a pair
       of S vertices. *)
   let augment_matching edge graph =
-    (match graph.debug with
-    | None -> ()
-    | Some pp ->
-        Format.printf "augment matching: @[<v>v = %a@ w = %a@]@." (Vertex.pp pp)
-          edge.i (Vertex.pp pp) edge.j;
-        Format.printf "PAIR: @[<v>i = %a@ j = %a@]@." (Vertex.pp pp) edge.i
+    debug graph (fun ppf pp ->
+        Format.fprintf ppf
+          "@ (@[<hv>AUGMENT_MATCHING@ (@[<hv>v@ %a@])@ (@[<hv>w@ %a@])@])@ \
+           (@[<hv>PAIR@ (@[<hv>i@ %a@])@ (@[<hv>j@ %a@])@])"
+          (Vertex.pp pp) edge.i (Vertex.pp pp) edge.j (Vertex.pp pp) edge.i
           (Vertex.pp pp) edge.j);
     augment_matching_loop graph ~s:edge.i ~p:(J edge);
     augment_matching_loop graph ~s:edge.j ~p:(I edge)
@@ -1178,13 +1171,12 @@ module Substage = struct
                     | New_blossom children ->
                         (* Found a new blossom; add it to the blossom
                            bookkeeping and turn it into an S-blossom. *)
-                        (match graph.debug with
-                        | None -> ()
-                        | Some pp ->
+                        debug graph (fun ppf pp ->
                             let { node; _ } = PList.hd_odd children in
-                            Format.printf
-                              "add blossom: @[<v>base = %a@ v = %a@ w = %a@ \
-                               blossom children = %a@]@."
+                            Format.fprintf ppf
+                              "@ (@[<hv>ADD_BLOSSOM@ (@[<hv>base@ %a@])@ \
+                               (@[<hv>v %a@])@ (@[<hv>w@ %a@])@ \
+                               (@[<hv>children@ %a@])@])"
                               (Node.pp pp) node (Vertex.pp pp) edge.i
                               (Vertex.pp pp) edge.j
                               (PList.pp (Child.pp pp))
@@ -1246,9 +1238,8 @@ module Substage = struct
   let rec labeling_loop ~graph = function
     | [] -> Not_augmented []
     | vertex :: queue -> (
-        (match graph.debug with
-        | None -> ()
-        | Some pp -> Format.printf "POP: Vertex %a@." (Vertex.pp pp) vertex);
+        debug graph (fun ppf pp ->
+            Format.fprintf ppf "@ (@[<hv>POP@ %a@])" (Vertex.pp pp) vertex);
         match scan_neighbors ~vertex ~graph ~queue with
         | Not_augmented queue -> labeling_loop ~graph queue
         | Augmented -> Augmented)
@@ -1256,15 +1247,14 @@ module Substage = struct
   type 'v t = Improvement_possible | Optimum_reached
 
   let rec make graph queue cardinality =
-    (match graph.debug with None -> () | Some _ -> Format.printf "SUBSTAGE@.");
+    debug graph (fun ppf _ -> Format.fprintf ppf "@ (@[<hv>SUBSTAGE");
     match labeling_loop ~graph queue with
     | Not_augmented queue -> (
         (* There is no augmenting path under these constraints;
            compute delta and reduce slack in the optimization problem. *)
         let delta = Delta.make cardinality ~graph in
-        (match graph.debug with
-        | None -> ()
-        | Some _ -> Format.printf "DELTA: %a@." Delta.pp delta);
+        debug graph (fun ppf pp ->
+            Format.fprintf ppf "@ (@[<hv>DELTA@ %a@])@])" (Delta.pp pp) delta);
         (* Take action at the point where the minimum delta occurred. *)
         match delta with
         | One delta ->
@@ -1295,7 +1285,9 @@ module Substage = struct
               ModifyBlossom.expand ~graph ~b ~stage:Not_endstage ~queue
             in
             make graph queue cardinality)
-    | Augmented -> Improvement_possible
+    | Augmented ->
+        debug graph (fun ppf _ -> Format.fprintf ppf "@])");
+        Improvement_possible
 end
 
 (** Remove labels, forget least-slack edges and allowable edges, and empty
@@ -1331,26 +1323,32 @@ type cardinality = [ `Not_max | `Max ]
 type 'a t = ('a * 'a) list
 
 (** Map endpoints to vertices and remove duplicates. *)
-let finalize { mates; compare; _ } =
-  List.fold_left
-    (fun l (k, v) ->
-      if Assoc.mem compare k l then l
-      else (k, (Endpoint.to_vertex v).value) :: l)
-    [] mates
+let finalize graph =
+  debug graph (fun ppf _ -> Format.fprintf ppf "@])");
+  let result =
+    List.fold_left
+      (fun l (k, v) ->
+        if Assoc.mem graph.compare k l then l
+        else (k, (Endpoint.to_vertex v).value) :: l)
+      [] graph.mates
+  in
+  ( debug graph @@ fun ppf pp ->
+    Format.fprintf ppf "@ (@[<hv>RESULT@ %a@])@ "
+      (Format.pp_print_list ~pp_sep (pp_pair pp pp))
+      result );
+  result
+
+let debug_f = debug
 
 let make ?debug ?(cardinality = `Not_max) compare edges =
-  let graph = Graph.make compare edges in
-  graph.debug <- debug;
+  let graph = { (Graph.make compare edges) with debug } in
   (* Loop until no further improvement is possible. *)
-  let rec aux = function
+  let rec aux i = function
     | [] -> finalize graph
     | _ :: tl -> (
-        (match graph.debug with
-        | None -> ()
-        | Some pp ->
-            Format.printf "STAGE %i@."
-              (List.length graph.vertices - List.length tl);
-            Format.printf "Mates = %a@." (Mates.pp pp) graph);
+        debug_f graph (fun ppf pp ->
+            Format.fprintf ppf "(@[<hv>(@[<hv>STAGE@ %i@])@ %a" i (Mates.pp pp)
+              graph);
         (* Each iteration of this loop is a "stage". A stage finds an augmenting
            path and uses that to improve the matching. *)
         let queue = reset_stage ~graph in
@@ -1366,6 +1364,7 @@ let make ?debug ?(cardinality = `Not_max) compare edges =
                     |> ignore
                 | { label = Free | S_single | S _ | T _; _ } -> ())
               graph.blossoms;
-            aux tl)
+            debug_f graph (fun ppf _ -> Format.fprintf ppf "@])@ ");
+            aux (succ i) tl)
   in
-  aux graph.vertices
+  aux 1 graph.vertices

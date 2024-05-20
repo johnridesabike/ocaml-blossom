@@ -21,8 +21,11 @@ let pp_list pp ppf l =
 let pp_pair pp_a pp_b ppf (a, b) =
   F.fprintf ppf "@[<hv>(@;<0 2>@[<hv 0>%a,@ %a@])@]" pp_a a pp_b b
 
+let print_title title = F.printf "@[%a@]@;" F.pp_print_text title
+
 let check pp title l =
-  F.printf "@[%a@]@;%a@;@;" F.pp_print_text title (pp_list (pp_pair pp pp)) l
+  print_title title;
+  F.printf "%a@;@;" (pp_list (pp_pair pp pp)) l
 
 let check_int = check F.pp_print_int
 let check_string = check (fun ppf s -> F.fprintf ppf "%S" s)
@@ -306,9 +309,8 @@ let () =
          (1, 0, 43.);
        ]
     |> sort);
-  (* NOTE: DEBUG THIS? *)
   check_int "Blossom with five children (B)."
-    (Blossom.make Int.compare
+    (Blossom.make Int.compare (* ~debug:F.pp_print_int*)
        [
          (1, 2, 77.);
          (1, 3, 60.);
@@ -326,9 +328,8 @@ let () =
          (4, 10, 30.);
        ]
     |> sort);
-  (* NOTE: DEBUG THIS? *)
   check_int "Scan along a long label path to create a blossom."
-    (Blossom.make Int.compare
+    (Blossom.make Int.compare (*~debug:F.pp_print_int*)
        [
          (10, 6, 30.);
          (10, 9, 55.);
@@ -446,7 +447,27 @@ let () =
     |> Blossom.make Int.compare ~cardinality:`Max
     |> ignore
   done;
-  F.printf "@[%a@]@;" F.pp_print_text
+  F.printf "@[%a@]@;@;" F.pp_print_text
     "Generate a large number of random graphs and check that the algorithm \
      doesn't crash.";
+
+  section "Debugging";
+  print_title
+    "Print debug info. (Same as: Create nested S-blossom, relabel as T, \
+     expand.)";
+  ignore
+    (Blossom.make Int.compare
+       ~debug:(F.std_formatter, F.pp_print_int)
+       [
+         (1, 2, 19.);
+         (1, 3, 20.);
+         (1, 8, 8.);
+         (2, 3, 25.);
+         (2, 4, 18.);
+         (3, 5, 18.);
+         (4, 5, 13.);
+         (4, 7, 7.);
+         (5, 6, 7.);
+       ]);
+
   F.printf "@]"

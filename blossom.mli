@@ -153,7 +153,7 @@ type 'a t = ('a * 'a) list
 (** A bidirectional map of each vertex to its mate vertex. *)
 
 val make :
-  ?debug:(Format.formatter -> 'a -> unit) ->
+  ?debug:Format.formatter * (Format.formatter -> 'a -> unit) ->
   ?cardinality:cardinality ->
   ('a -> 'a -> int) ->
   ('a * 'a * float) list ->
