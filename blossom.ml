@@ -354,16 +354,13 @@ module Label = struct
     | T endpoint ->
         Format.fprintf ppf "(@[<hv>T@ %a@])" (Endpoint.pp pp) endpoint
 
-  (** Label a vertex S and add its in_blossom's children to the queue. *)
-  let assign_s ~v ~label ~queue ~graph =
+  let assign_aux ~v ~label ~graph =
     let b = v.fields.in_blossom in
-    debug graph (fun ppf pp_v ->
+    debug graph (fun ppf pp' ->
         Format.fprintf ppf
-          "@ (@[<hv>ASSIGN_LABEL@ %a@ (@[<hv>in_blossom@ %a@])@ %a@])@ \
-           (@[<hv>PUSH@ %a@])"
-          (Vertex.pp pp_v) v (Node.pp pp_v) b (pp pp_v) label
-          (Node.Leaves.pp pp_v) b);
-    (match b with
+          "@ (@[<hv>ASSIGN_LABEL@ %a@ (@[<hv>in_blossom %a@])@ %a@])"
+          (Vertex.pp pp') v (Node.pp pp') b (pp pp') label);
+    match b with
     | Blossom b ->
         b.label <- label;
         b.best_edge <- None;
@@ -371,27 +368,21 @@ module Label = struct
         v.label <- label
     | Vertex _ ->
         v.best_edge <- None;
-        v.label <- label);
+        v.label <- label
+
+  (** Label a vertex S and add its in_blossom's children to the queue. *)
+  let assign_s ~v ~label ~queue ~graph =
+    assign_aux ~v ~label ~graph;
+    let b = v.fields.in_blossom in
+    debug graph (fun ppf pp_v ->
+        Format.fprintf ppf "@ (@[<hv>PUSH@ %a@])" (Node.Leaves.pp pp_v) b);
     Node.Leaves.add_to_list queue b
 
   (** Label a vertex T, label its mate S, and add its mate's in_blossom's
       children to the queue. *)
   let assign_t ~v ~p ~graph ~queue =
+    assign_aux ~v ~label:(T p) ~graph;
     let b = v.fields.in_blossom in
-    let label = T p in
-    debug graph (fun ppf pp' ->
-        Format.fprintf ppf
-          "@ (@[<hv>ASSIGN_LABEL@ %a@ (@[<hv>in_blossom %a@])@ %a@])"
-          (Vertex.pp pp') v (Node.pp pp') b (pp pp') label);
-    (match b with
-    | Blossom b ->
-        b.label <- label;
-        b.best_edge <- None;
-        v.best_edge <- None;
-        v.label <- label
-    | Vertex _ ->
-        v.best_edge <- None;
-        v.label <- label);
     let matep = Mates.find (Node.base b) graph in
     let mate = Endpoint.to_vertex matep in
     assign_s ~v:mate ~label:(S (Endpoint.rev matep)) ~queue ~graph
